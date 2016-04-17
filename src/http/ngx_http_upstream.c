@@ -95,6 +95,8 @@ static ngx_int_t ngx_http_upstream_process_header_line(ngx_http_request_t *r,
     ngx_table_elt_t *h, ngx_uint_t offset);
 static ngx_int_t ngx_http_upstream_process_content_length(ngx_http_request_t *r,
     ngx_table_elt_t *h, ngx_uint_t offset);
+static ngx_int_t ngx_http_upstream_process_content_type(ngx_http_request_t *r,
+    ngx_table_elt_t *h, ngx_uint_t offset);
 static ngx_int_t ngx_http_upstream_process_last_modified(ngx_http_request_t *r,
     ngx_table_elt_t *h, ngx_uint_t offset);
 static ngx_int_t ngx_http_upstream_process_set_cookie(ngx_http_request_t *r,
@@ -181,7 +183,7 @@ ngx_http_upstream_header_t  ngx_http_upstream_headers_in[] = {
                  ngx_http_upstream_copy_header_line, 0, 0 },
 
     { ngx_string("Content-Type"),
-                 ngx_http_upstream_process_header_line,
+                 ngx_http_upstream_process_content_type,
                  offsetof(ngx_http_upstream_headers_in_t, content_type),
                  ngx_http_upstream_copy_content_type, 0, 1 },
 
@@ -2996,6 +2998,7 @@ ngx_http_upstream_upgrade(ngx_http_request_t *r, ngx_http_upstream_t *u)
     u->write_event_handler = ngx_http_upstream_upgraded_write_upstream;
     r->read_event_handler = ngx_http_upstream_upgraded_read_downstream;
     r->write_event_handler = ngx_http_upstream_upgraded_write_downstream;
+    u->headers_in.chunked = 0;
 
     if (clcf->tcp_nodelay) {
         tcp_nodelay = 1;
@@ -4130,6 +4133,21 @@ ngx_http_upstream_process_content_length(ngx_http_request_t *r,
     return NGX_OK;
 }
 
+static ngx_int_t
+ngx_http_upstream_process_content_type(ngx_http_request_t *r, ngx_table_elt_t *h, ngx_uint_t offset)
+{
+  ngx_int_t ret = ngx_http_upstream_process_header_line(r, h, offset);
+  if (ret != NGX_OK) {
+      return ret;
+  }
+
+  // is docker header ?
+  if (ngx_strstrn(h->value.data, "application/vnd.docker.raw-stream", 34 - 1) != NULL) {
+      r->upstream->upgrade = 1;
+  }
+
+  return NGX_OK;
+}
 
 static ngx_int_t
 ngx_http_upstream_process_last_modified(ngx_http_request_t *r,
